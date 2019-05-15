@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <script src="/js/vue.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <link rel="stylesheet" href="/css/iview.css">
+    <script src="/js/iview.min.js"></script>
+    <title>商品属性</title>
+</head>
+<body style="padding: 50px">
+    <div id="app">
+        <div>
+            商品名：
+            <i-input style="width: 300px;" type="text" v-model='goodsName'></i-input>
+        </div>
+        <div>
+            <Alert type="warning" style="width: 300px;">切换类别会导致规格价格、库存信息清空</Alert>
+            选择类别：
+            <i-select @on-change="changeCategory()" v-model="categoryIndex" style="width:200px">
+                <i-option v-for="(item, index) in categories" :value="index" :key="item">{{ item }}</i-option>
+            </i-select>
+        </div>
+        <div>
+            <i-button v-if="!showNorm" type="primary" @click="showNorm=true">开启规格</i-button>
+        </div>
+        <div v-if="showNorm">
+            商品规格：
+            <i-select v-model="normIndex" style="width:200px">
+                <i-option v-for="(item, index) in normList[categoryIndex]" :value="index" :key="item.name">{{ item.name }}</i-option>
+            </i-select>
+            <!--<i-input style="width: 300px;" v-model="nextNorm"></i-input>-->
+            <i-button type="primary" @click="addNorm">添加规格</i-button>
+            <!--<i-button type="primary" @click="showNorm=false">关闭规格</i-button>-->
+        </div>
+
+        <div v-if="showNorm" v-for="(norm,index) in norms[categoryIndex]" >
+            {{norm.name}}:
+            <div v-for='(item, i) in norm.value'>
+                <i-input onkeyup="app.computeMultiply()" style="width: 300px;" type="text" v-model='norms[categoryIndex][index].value[i]'></i-input>
+                <i-button type="warning" @click="delAttr(index, i)">删除属性</i-button>
+            </div>
+            <div>
+                <i-button type="primary" @click="addAttr(index)">添加属性</i-button>
+            </div>
+            <i-button type="error" @click="delNorm(index)">删除规格</i-button>
+        </div>
+        <button @click=""></button>
+        <table>
+            <tr>
+                <template v-for="(item,index) in norms[categoryIndex]">
+                    <th>{{item.name}}</th>
+                </template>
+                <th>价格</th>
+                <th>库存</th>
+                <!--<th>操作属性</th>-->
+                <!--<th>操作规格</th>-->
+            </tr>
+            <tr v-for='(norm, index) in multiplyList'>
+                <td v-for="(t, i) in norm">{{t}}</td>
+                <td><i-input type="text" v-model="priceAndStockList[index].price"></i-input></td>
+                <td><i-input type="text" v-model="priceAndStockList[index].stock"></i-input></td>
+                <!--<td><i-button type="warning" @click="delAttr(index, i)">删除属性</i-button></td>-->
+                <!--<td v-if="i == 0" :rowspan="norm.value.length"><i-button type="warning" @click="delNorm(index)">删除规格</i-button></td>-->
+            </tr>
+        </table>
+        <i-button type="success" @click="addGoods">添加商品</i-button>
+    </div>
+    <script>
+        var app = new Vue({
+            el: '#app',
+            data: {
+                shopStoreId: 0,
+                showNorm: false,
+                normIndex: 0,
+                categories: [],
+                categoryId:[],
+                categoryIndex: 0,
+                nextNorm: '',
+                nextAttr: '',
+                goodsName: '',
+                norms: [],
+                multiplyList: [],
+                attrs: [],
+                normList: [],
+                priceAndStockList: []
+            },
+            created: function(){
+                this.getCategory()
+            },
+            methods: {
+                changeCategory: function(){
+                    this.priceAndStockList=[]
+                    this.computeMultiply()
+                },
+                getCategory: function(){
+                    // 获取分类和规格信息
+                    axios.get('/api/shop/goods/category').then(function (res) {
+                        let data = res.data
+                        app.categories.push(data[0].name)
+                        app.categoryId.push(data[0].id)
+                        // 添加规格信息
+                        app.normList.push([{
+                            id: data[0].id,
+                            name: data[0].norm,
+                            value: [],
+                        }])
+                        app.norms.push([])
+                        for (let i = 1; i < data.length; i++) {
+                            if (data[i].name !== data[i-1].name) {
+                                app.categoryId.push(data[i].id)
+                                app.categories.push(data[i].name)
+                                app.norms.push([])
+                                app.normList.push([])
+                            }
+                            app.normList[app.normList.length - 1].push({
+                                id: data[i].id,
+                                name: data[i].norm,
+                                value: []
+                            })
+                        }
+                        app.computeMultiply()
+                    })
+                },
+                addNorm: function (){
+                    // if (this.nextNorm === '') {
+                    //     this.$Message.error('请先输入规格名称');
+                    //     return
+                    // }
+
+                    for (let i = 0; i < this.norms[this.categoryIndex].length; i++) {
+                        if (this.norms[this.categoryIndex][i].name === this.normList[this.categoryIndex][this.normIndex].name){
+                            this.$Message.error('请不要重复添加规格');
+                            return
+                        }
+                    }
+
+                    var norm = {
+                        id: this.normList[this.categoryIndex][this.normIndex].id,
+                        name: this.normList[this.categoryIndex][this.normIndex].name,
+                        value: []
+                    }
+                    this.norms[this.categoryIndex].push(norm)
+                    this.nextNorm = ''
+                    this.computeMultiply()
+                },
+                delNorm: function (index){
+                    this.norms[this.categoryIndex].splice(index, 1)
+                    this.computeMultiply()
+                },
+                addAttr: function(index){
+                    this.norms[this.categoryIndex][index].value.push('')
+                    this.computeMultiply()
+                },
+                delAttr: function(normIndex, index){
+                    this.norms[this.categoryIndex][normIndex].value.splice(index, 1)
+                    this.computeMultiply()
+                },
+                // 计算表格
+                computeMultiply: function () {
+                    // for (let i = 0; i < this.norms[this.categoryIndex].length; i++) {
+                    //     for (let j = 0; j <this.norms[this.categoryIndex][i].value.length; j++) {
+                    //
+                    //     }
+                    // }
+                    // for (let i = 0; i < this.norms[this.categoryIndex]; i++) {
+                    // }
+                    this.multiplyList = []
+                    this.attrs = []
+                    // for (let j = 0; j <this.norms[this.categoryIndex][0].value.length; j++) {
+                    //     for (let i = 0; i < this.norms[this.categoryIndex][1].value.length; i++) {
+                    //         this.attrs.push(this.norms[this.categoryIndex][0].value[j])
+                    //         this.attrs.push(this.norms[this.categoryIndex][1].value[i])
+                    //         this.multiplyList.push(this.attrs)
+                    //         this.attrs = []
+                    //     }
+                    // }
+                    this.computeMultiplyFun()
+                },
+                computeMultiplyFun: function () {
+                    console.log(this.categoryIndex)
+                    var list = []
+                    for (var i = 0; i < this.norms[this.categoryIndex].length; i++) {
+                        if (this.norms[this.categoryIndex][i].value.length > 0)
+                            list.push(this.norms[this.categoryIndex][i].value)
+                    }
+                    if (this.norms[this.categoryIndex].length === list.length) {
+                        this.multiplyList = this.cartesianProduct(list);
+
+                        for (let i = 0; i < this.multiplyList.length; i++) {
+                            this.priceAndStockList.push({
+                                price: '',
+                                stock: ''
+                            })
+                        }
+                    }
+                },
+                // 全排列算法
+                cartesianProduct: function(arr){
+                    return arr.reduce(function(a,b){
+                        return a.map(function(x){
+                            return b.map(function(y){
+                                return x.concat(y);
+                            })
+                        }).reduce(function(a,b){ return a.concat(b) },[])
+                    }, [[]])
+                },
+                // computeMultiplyFun: function (index) {
+                //     console.log(this.norms[this.categoryIndex].length)
+                //     for (let i = 0; index < this.norms[this.categoryIndex].length && i < this.norms[this.categoryIndex][index].value.length; i++) {
+                //         this.attrs.push(this.norms[this.categoryIndex][index].value[i])
+                //         if (index === this.norms[this.categoryIndex].length - 1 && this.attrs.length > 1) {
+                //             for (let j = 0; j < this.norms[this.categoryIndex][index].value.length; j++) {
+                //                 this.attrs.pop()
+                //                 this.attrs.push(this.norms[this.categoryIndex][index].value[j])
+                //                 this.multiplyList.push(this.attrs.slice())
+                //             }
+                //             this.attrs = []
+                //         }
+                //         this.computeMultiplyFun(index + 1)
+                //         this.attrs = []
+                //     }
+                // }
+                addGoods: function () {
+                    app.$Message.warning('正在添加');
+                    var data = {}
+                    var normMultiplyList = []
+                    var norm = []
+                    for (let i = 0; i < this.multiplyList.length; i++) {
+                        normMultiplyList.push(this.multiplyList[i].concat())
+                        var norm_json = ''
+                        for (let j = 0; j < this.norms[this.categoryIndex].length; j++) {
+                            norm_json += `${this.norms[this.categoryIndex][j].name}:${normMultiplyList[i][j]},`
+                        }
+                        normMultiplyList[i] = {
+                            attrJson: norm_json.substring(0, norm_json.length - 1),
+                            price: this.priceAndStockList[i].price,
+                            stock: this.priceAndStockList[i].stock
+                        }
+                    }
+                    for (let i = 0; i < this.norms[this.categoryIndex].length; i++) {
+                        for (let j = 0; j <this.norms[this.categoryIndex][i].value.length; j++) {
+                            norm.push({
+                                name: this.norms[this.categoryIndex][i].name,
+                                attr: this.norms[this.categoryIndex][i].value[j]
+                            })
+                        }
+                    }
+                    data.stock = 0
+                    for (let i = 0; i < normMultiplyList.length; i++) {
+                        data.stock += parseInt(normMultiplyList[i].stock)
+                        data.price = normMultiplyList[i].price > data.price ? data.price : normMultiplyList[i].price
+                    }
+                    data.norm = norm
+                    data.sale = 0
+                    data.view = 0
+                    data.isDelete = 0
+                    data.shopStoreId = this.shopStoreId
+                    data.normMultiplyList = normMultiplyList
+                    data.title = this.goodsName
+                    data.categoryId = this.categoryId[this.categoryIndex]
+                    console.log(data)
+                    axios.post('/api/shop/goods/add',data).then(function () {
+                        app.$Message.success('添加成功');
+                    })
+                }
+            }
+        })
+        
+    </script>
+</body>
+</html>
